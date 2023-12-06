@@ -23,6 +23,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -370,7 +371,8 @@ int main(int argc, char* argv[]) {
 			start = start_addr;
 
 		if (is_addr_in_flash(start))
-			end = stm->dev->fl_end;
+			//end = stm->dev->fl_end;
+			end = 0x90000000 + (512 * 1024);
 		else {
 			no_erase = 1;
 			if (is_addr_in_ram(start))
@@ -389,7 +391,8 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (readwrite_len && (end > start + readwrite_len))
-			end = start + readwrite_len;
+			//end = start + readwrite_len;
+			end = 0x90000000 + (512 * 1024);
 
 		first_page = flash_addr_to_page_floor(start);
 		if (!first_page && end == stm->dev->fl_end)
@@ -613,7 +616,7 @@ int main(int argc, char* argv[]) {
 				failed = 0;
 			}
 
-			addr	+= len;
+			addr += len;
 			offset	+= len;
 
 			fprintf(diag,
@@ -624,8 +627,16 @@ int main(int argc, char* argv[]) {
 			);
 			fflush(diag);
 
-			if( len < reqlen)	/* Last read already reached EOF */
-				break ;
+			const uint32_t base = parser->base(p_st);
+			bool new_base = false;
+			if (base != start)
+			{
+				new_base = true;
+				addr = base;
+			}
+
+			if ((len < reqlen) && !new_base)	/* Last read already reached EOF */
+				break;
 		}
 
 		fprintf(diag,	"Done.\n");

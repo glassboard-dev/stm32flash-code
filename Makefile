@@ -37,6 +37,9 @@ clean:
 	rm -f $(OBJS) stm32flash
 	cd parsers && $(MAKE) $@
 
+format:
+	clang-format *.c *.h -i -style=file
+
 install: all
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/bin
 	$(INSTALL) -m 755 stm32flash $(DESTDIR)$(PREFIX)/bin

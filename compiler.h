@@ -23,8 +23,8 @@
 #if defined(__GNUC__)
 #undef __unused
 #undef __maybe_unused
-#define __unused __attribute__ ((unused))
-#define __maybe_unused __attribute__ ((unused))
+#define __unused __attribute__((unused))
+#define __maybe_unused __attribute__((unused))
 #endif
 
 #ifndef __unused

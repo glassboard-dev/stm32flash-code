@@ -18,15 +18,16 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-
 #ifndef _INIT_H
 #define _INIT_H
 
-#include "stm32.h"
-#include "port.h"
+#include <stdint.h>
 
-int init_bl_entry(struct port_interface *port, const char *seq);
-int init_bl_exit(stm32_t *stm, struct port_interface *port, const char *seq);
-int gpio_bl_exit(struct port_interface *port, const char *seq);
+#include "port.h"
+#include "stm32.h"
+
+int init_bl_entry(struct port_interface* port, const char* seq);
+int init_bl_exit(stm32_t* stm, struct port_interface* port, const char* seq);
+int gpio_bl_exit(struct port_interface* port, const char* seq);
 
 #endif

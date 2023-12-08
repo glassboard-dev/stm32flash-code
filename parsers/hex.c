@@ -249,10 +249,8 @@ parser_err_t hex_read(void *storage, void *data, unsigned int *len) {
 
 	*len = get;
 
-	if (st->current->offset >= st->current->data_len)
-	{
-		if (NULL != st->current->next)
-		{
+	if (st->current->offset >= st->current->data_len) {
+		if (NULL != st->current->next) {
 			st->current = st->current->next;
 		}
 	}

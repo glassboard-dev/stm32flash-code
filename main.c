@@ -635,17 +635,15 @@ int main(int argc, char* argv[]) {
 			fflush(diag);
 
 			const uint32_t base = parser->base(p_st);
-			bool new_base = false;
 			if (base != start) {
-				new_base = true;
+				start = base;
 				addr = base;
 				if (is_addr_in_flash(base))
 					end = stm->dev->fl_end;
 				else if (is_addr_in_external_flash(base, ext_flash_size))
 					end = stm->dev->efl_start + ext_flash_size;
 			}
-
-			if ((len < reqlen) && !new_base)	/* Last read already reached EOF */
+			else if (len < reqlen) /* Last read already reached EOF */
 				break;
 		}
 

@@ -91,6 +91,7 @@ char		*filename;
 char		*gpio_seq	= NULL;
 uint32_t	start_addr	= 0;
 uint32_t	readwrite_len	= 0;
+uint32_t    ext_flash_size = 0;
 
 /* functions */
 int  parse_options(int argc, char *argv[]);
@@ -134,6 +135,11 @@ static int is_addr_in_ram(uint32_t addr)
 static int is_addr_in_flash(uint32_t addr)
 {
 	return addr >= stm->dev->fl_start && addr < stm->dev->fl_end;
+}
+
+static int is_addr_in_external_flash(uint32_t addr, uint32_t ext_flash_size)
+{
+	return addr >= stm->dev->efl_start && addr < stm->dev->efl_start + ext_flash_size;
 }
 
 static int is_addr_in_opt_bytes(uint32_t addr)
@@ -343,8 +349,9 @@ int main(int argc, char* argv[]) {
 	fprintf(diag, "Device ID    : 0x%04x (%s)\n", stm->pid, stm->dev->name);
 	fprintf(diag, "- RAM        : Up to %dKiB  (%db reserved by bootloader)\n", (stm->dev->ram_end - 0x20000000) / 1024, stm->dev->ram_start - 0x20000000);
 	fprintf(diag, "- Flash      : Up to %dKiB (size first sector: %dx%d)\n", (stm->dev->fl_end - stm->dev->fl_start ) / 1024, stm->dev->fl_pps, stm->dev->fl_ps[0]);
-	fprintf(diag, "- Option bytes  : %db\n", stm->dev->opt_end - stm->dev->opt_start + 1);
-	fprintf(diag, "- System memory : %dKiB\n", (stm->dev->mem_end - stm->dev->mem_start) / 1024);
+	fprintf(diag, "- Option bytes   : %db\n", stm->dev->opt_end - stm->dev->opt_start + 1);
+	fprintf(diag, "- System memory  : %dKiB\n", (stm->dev->mem_end - stm->dev->mem_start) / 1024);
+	fprintf(diag, "- External flash : %dKiB\n", ext_flash_size / 1024);
 
 	uint8_t		buffer[256];
 	uint32_t	addr, start, end;
@@ -371,8 +378,9 @@ int main(int argc, char* argv[]) {
 			start = start_addr;
 
 		if (is_addr_in_flash(start))
-			//end = stm->dev->fl_end;
-			end = 0x90000000 + (512 * 1024);
+			end = stm->dev->fl_end;
+		if (is_addr_in_external_flash(start, ext_flash_size))
+			end = stm->dev->efl_start + ext_flash_size;
 		else {
 			no_erase = 1;
 			if (is_addr_in_ram(start))
@@ -391,8 +399,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (readwrite_len && (end > start + readwrite_len))
-			//end = start + readwrite_len;
-			end = 0x90000000 + (512 * 1024);
+			end = start + readwrite_len;
 
 		first_page = flash_addr_to_page_floor(start);
 		if (!first_page && end == stm->dev->fl_end)
@@ -629,10 +636,13 @@ int main(int argc, char* argv[]) {
 
 			const uint32_t base = parser->base(p_st);
 			bool new_base = false;
-			if (base != start)
-			{
+			if (base != start) {
 				new_base = true;
 				addr = base;
+				if (is_addr_in_flash(base))
+					end = stm->dev->fl_end;
+				else if (is_addr_in_external_flash(base, ext_flash_size))
+					end = stm->dev->efl_start + ext_flash_size;
 			}
 
 			if ((len < reqlen) && !new_base)	/* Last read already reached EOF */
@@ -701,7 +711,7 @@ int parse_options(int argc, char *argv[])
 	int c;
 	char *pLen;
 
-	while ((c = getopt(argc, argv, "a:b:m:r:w:e:vn:g:jkfcChuos:S:F:i:R")) != -1) {
+	while ((c = getopt(argc, argv, "a:b:m:r:w:e:vn:g:jkfcChuos:S:F:i:R:x:")) != -1) {
 		switch(c) {
 			case 'a':
 				port_opts.bus_addr = strtoul(optarg, NULL, 0);
@@ -891,6 +901,13 @@ int parse_options(int argc, char *argv[])
 				}
 				action = ACT_CRC;
 				break;
+			case 'x':
+				ext_flash_size = strtoul(optarg, NULL, 0);
+				if (ext_flash_size == 0) {
+					fprintf(stderr, "ERROR: Invalid options, can't specify zero size in option -x\n");
+					return 1;
+				}
+				break;
 		}
 	}
 
@@ -948,6 +965,7 @@ void show_help(char *name) {
 		"	-i GPIO_string	GPIO sequence to enter/exit bootloader mode\n"
 		"			GPIO_string=[entry_seq][:[exit_seq]]\n"
 		"			sequence=[[-]signal]&|,[sequence]\n"
+		"	-x		External flash size (bytes)\n"
 		"\n"
 		"GPIO sequence:\n"
 		"	The following signals can appear in a sequence:\n"

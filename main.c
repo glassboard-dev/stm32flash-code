@@ -370,7 +370,7 @@ int main(int argc, char* argv[])
             start = start_addr;
 
         if (is_addr_in_flash(start)) end = stm->dev->fl_end;
-        if (is_addr_in_external_flash(start, ext_flash_size))
+        else if (is_addr_in_external_flash(start, ext_flash_size))
             end = stm->dev->efl_start + ext_flash_size;
         else {
             no_erase = 1;

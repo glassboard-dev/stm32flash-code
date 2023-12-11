@@ -32,10 +32,17 @@
 
 extern FILE *diag;
 
+struct hex_block {
+	size_t data_len, offset;
+	uint8_t *data;
+	uint32_t base;
+	struct hex_block *next;
+};
+
 typedef struct {
-	size_t		data_len, offset;
-	uint8_t		*data;
-	uint32_t	base;
+	size_t		data_len;
+	struct hex_block blocks;
+	struct hex_block *current;
 } hex_t;
 
 void* hex_init() {
@@ -44,6 +51,9 @@ void* hex_init() {
 
 parser_err_t hex_open(void *storage, const char *filename, const char write) {
 	hex_t *st = storage;
+	st->current = &st->blocks;
+	struct hex_block *head = st->current;
+
 	if (write) {
 		return PARSER_ERR_RDONLY;
 	} else {
@@ -87,22 +97,23 @@ parser_err_t hex_open(void *storage, const char *filename, const char write) {
 			switch(type) {
 				/* data record */
 				case 0:
-					if (st->data_len == 0) {
-						st->base |= address;
+					if (head->data_len == 0) {
+						head->base |= address;
 						last_address = address;
 					}
 
 					c = address - last_address;
-					st->data = realloc(st->data, st->data_len + c + reclen);
+					head->data = realloc(head->data, head->data_len + c + reclen);
 
 					/* if there is a gap, set it to 0xff and increment the length */
 					if (c > 0) {
-						memset(&st->data[st->data_len], 0xff, c);
-						st->data_len += c;
+						memset(&head->data[head->data_len], 0xff, c);
+						head->data_len += c;
 					}
 
 					last_address = address + reclen;
-					record = &st->data[st->data_len];
+					record = &(head->data[head->data_len]);
+					head->data_len += reclen;
 					st->data_len += reclen;
 					break;
 
@@ -163,39 +174,31 @@ parser_err_t hex_open(void *storage, const char *filename, const char write) {
 				case 4:	base = base << 12;
 					/* fall-through */
 				case 2: base = base << 4;
-					/* Reset last_address since our base changed */
-					last_address = 0;
-
-					/* Only assign the program's base address once, and only
-					 * do so if we haven't seen any data records yet.
-					 * If there are any data records before address records,
-					 * the program's base address must be zero.
-					 */
-					if (st->base == 0 && st->data_len == 0) {
-						st->base = base;
+					if (head->base == 0 && head->data_len == 0) {
+						head->base = base;
 						break;
 					}
 
 					/* we cant cope with files out of order */
-					if (base < st->base) {
+					if (base < head->base) {
 						close(fd);
 						return PARSER_ERR_INVALID_FILE;
 					}
 
-					/* if there is a gap, enlarge and fill with 0xff */
-					size_t len = base - st->base;
-					if (len > st->data_len) {
-						size_t gap = len - st->data_len;
-						if (gap > 16384) /* arbitrary limit for warning */
-							fprintf(diag, "Warning: Filling gap of %zu bytes at 0x%08zx\n", gap, st->base + st->data_len);
-						st->data = realloc(st->data, len);
-						if (st->data == NULL) {
-							fprintf(diag, "Error: Cannot reallocate memory\n");
-							return PARSER_ERR_SYSTEM;
-						}
-						memset(&st->data[st->data_len], 0xff, gap);
-						st->data_len = len;
+					/* 	does the next base create a jump in the address range? */
+					if (base > (head->base + last_address + 1u)) {
+						head->next = malloc(sizeof(struct hex_block));
+						head->next->base = base;
+						head->next->data_len = 0;
+						head->next->offset = 0;
+						head->next->next = NULL;
+
+						head = head->next;
 					}
+
+					/* Reset last_address since our base changed */
+					last_address = 0;
+
 					break;
 			}
 		}
@@ -207,14 +210,28 @@ parser_err_t hex_open(void *storage, const char *filename, const char write) {
 
 parser_err_t hex_close(void *storage) {
 	hex_t *st = storage;
-	if (st) free(st->data);
-	free(st);
+	struct hex_block* current = &st->blocks;
+	struct hex_block* prev = NULL;
+
+	if (NULL == st->blocks.next) {
+		return PARSER_ERR_OK;
+	}
+
+	current = st->blocks.next;
+
+	while (current != NULL) {
+		free(current->data);
+		prev = current;
+		current = current->next;
+		free(prev);
+	}
+
 	return PARSER_ERR_OK;
 }
 
 unsigned int hex_base(void *storage) {
 	hex_t *st = storage;
-	return st->base;
+	return st->current->base;
 }
 
 unsigned int hex_size(void *storage) {
@@ -224,13 +241,20 @@ unsigned int hex_size(void *storage) {
 
 parser_err_t hex_read(void *storage, void *data, unsigned int *len) {
 	hex_t *st = storage;
-	unsigned int left = st->data_len - st->offset;
+	unsigned int left = st->current->data_len - st->current->offset;
 	unsigned int get  = left > *len ? *len : left;
 
-	memcpy(data, &st->data[st->offset], get);
-	st->offset += get;
+	memcpy(data, &st->current->data[st->current->offset], get);
+	st->current->offset += get;
 
 	*len = get;
+
+	if (st->current->offset >= st->current->data_len) {
+		if (NULL != st->current->next) {
+			st->current = st->current->next;
+		}
+	}
+
 	return PARSER_ERR_OK;
 }
 
